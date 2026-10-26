@@ -1,48 +1,50 @@
 # Legal Document Analyzer
 
-A small Python project that sends legal text to the Google Gemini API and returns a summary, key clauses and risks as structured JSON.
+A Python notebook that sends a legal document to the Google Gemini API and returns a short summary, the key clauses and the possible risks. Every clause and risk comes with a short quote from the document, and the code checks that each quote really appears in the text.
 
-## How it works
+This is a learning project. It gives general information, not legal advice, and it can be wrong.
 
-1. The legal text is placed inside a prompt that tells the model to act as a legal document analyser.
-2. The prompt asks for a reply in one fixed JSON format: `summary`, `key_clauses` and `risks`.
-3. The script sends the prompt to Gemini (`gemini-2.5-flash`) and cleans the reply.
-4. The reply is parsed with `json.loads`, so each part can be used on its own.
+## What it does
 
-## Example output
+1. Takes the document text and wraps it in `<document>` tags. The prompt tells Gemini to treat everything inside the tags as text to read and never to follow instructions found inside it.
+2. Asks Gemini for a reply in a fixed JSON shape (summary, key clauses, risks with a severity of low, medium or high).
+3. Checks the reply with Pydantic. A reply that is broken or has the wrong shape is rejected.
+4. Retries up to 3 times when the server is busy, the network drops or the reply is not valid. A wrong API key stops straight away.
+5. Logs the time and the token counts of each call.
+6. Checks that every quote Gemini gave is really in the original document.
+7. Lets Gemini call a small glossary function (`lookup_legal_term`) when it explains the risks in plain English. This is function calling.
 
-From one run on a short sample employment agreement:
+## How to run it
 
-```
-SUMMARY:
-This Employment Agreement is between ABC Company and John Smith, setting a 2-year term starting January 1st 2026, with an annual salary of 45,000 euro. It includes provisions for termination with 30 days' notice and a 6-month post-employment non-compete clause.
+1. Get a free Gemini API key from Google AI Studio.
+2. Install the packages: `pip install -r requirements.txt`
+3. Start Jupyter: `jupyter notebook`, then open `legal_document_analyzer.ipynb`.
+4. In the settings cell near the top, replace the text `API KEY` with your own key, then run the cells from top to bottom.
 
-KEY CLAUSES:
-- Employment for a period of 2 years starting January 1st 2026.
-- Annual salary of 45,000 euro, paid monthly.
-- Either party may terminate the agreement with 30 days written notice.
-- Employee must not work for any competitor for 6 months after leaving the company.
+Never save or upload the notebook with your real key in it.
 
-RISKS:
-- The 6-month non-compete clause restricts the employee's ability to seek employment with competitors immediately after leaving.
-- The 30-day notice period for termination may be relatively short for the employee to find new employment or for the employer to find a replacement.
-- Despite a stated 2-year term, the 30-day termination clause allows for early cessation, potentially impacting job security for the employee or retention for the employer.
-```
+## Results
 
-## Run it
+The last cell runs three short sample documents (an employment agreement, an NDA and a lease) that I wrote for this test. It counts how many expected facts, such as "2 years", "45,000" or "20,000", appear in the output, and how many quotes really appear in the document. The fact check is simple word matching, so it is a rough check and not a measure of accuracy.
 
-1. Get a free API key from Google AI Studio (aistudio.google.com/apikey).
-2. Install the package and set the key as an environment variable:
+| Prompt version | Facts found | Quotes found in the document |
+|---|---|---|
+| First version | 12 of 13 | 16 of 16 |
+| Current version (asks for exact amounts and dates) | 13 of 13 | 15 of 15 |
 
-```
-pip install -r requirements.txt
-set GEMINI_API_KEY=your_key_here      (Windows Command Prompt)
-export GEMINI_API_KEY=your_key_here   (Mac or Linux)
-python legal_document_analyzer.py
-```
+In the first version, the one missed fact was the NDA penalty amount (20,000 euro). The output said "a significant financial penalty" without the figure. I added a line to the prompt asking for exact amounts, durations and dates, and the figure now appears. I ran the current version more than once and it found all 13 facts each time.
 
-Never put the API key in the code or commit it to GitHub.
+The output is not identical from run to run, even with temperature set to 0. For example, the NDA gave 1 risk in some runs and 3 risks in others, and the number of quotes changed between 4 and 7. So the quote totals above are from one run. I tuned the prompt on these same three samples, so the 13 of 13 is partly fitted to this test and would probably be lower on documents the prompt has not seen.
 
-## Status
+The notebook waits and retries when the free tier rate limit is hit (5 requests per minute, 20 per day for this model).
 
-Personal project, built to learn the Gemini API, prompt engineering and JSON parsing. It was tested on one short sample employment agreement. It does not read PDF files yet, and the output has not been checked by a lawyer, so it is not legal advice.
+## Limits
+
+- Only tested on three short documents. Real contracts are longer and messier.
+- Gemini can miss risks or rate them differently from a lawyer.
+- It knows nothing about the law outside the document, so it cannot say whether a clause is legal or enforceable.
+- Only plain text is supported in this version.
+
+## What I would add next
+
+PDF input, a command line version, unit tests, and a larger test set with real contracts.
